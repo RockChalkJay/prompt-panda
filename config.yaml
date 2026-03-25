@@ -1,0 +1,52 @@
+# config.yaml — Prompt Panda configuration
+# All paths support ~ for home directory expansion.
+
+ollama:
+  model: qwen3:8b          # any model installed in Ollama
+  base_url: http://127.0.0.1:11434
+
+sandbox:
+  # All file operations are restricted to this directory.
+  # The assistant cannot read or write outside this path.
+  root: ~/ai_sandbox
+
+tools:
+  filesystem: true   # read and write files within sandbox
+  shell: true        # run shell commands (always requires HITL confirmation)
+  web: true          # fetch public web pages
+  git: true          # read-only git commands (status, log, diff)
+  email: false       # send email — disabled by default, opt-in only
+
+security:
+  ipi_filter: true          # block prompt injection attempts
+  hitl_destructive: true    # require confirmation for non-read-only tool calls
+  audit_log: ~/prompt_panda_audit.db  # SQLite audit log path
+
+  # URL allowlist — if non-empty, web_fetch is restricted to these domains only.
+  # Leave empty to allow all public URLs (all fetches are still logged).
+  # Example: ["github.com", "docs.python.org", "wikipedia.org"]
+  url_allowlist: []
+
+  # URL blocklist — always blocked regardless of allowlist.
+  # Internal/private IP ranges are always blocked automatically.
+  url_blocklist:
+    - "169.254.169.254"          # AWS instance metadata
+    - "metadata.google.internal" # GCP instance metadata
+
+messaging:
+  telegram:
+    enabled: false
+    token: ""          # your bot token from @BotFather
+
+    # Restrict the bot to specific Telegram user IDs.
+    # Get your user ID by messaging @userinfobot on Telegram.
+    # Leave empty to allow anyone — only safe for fully private bots.
+    allowed_users: []  # e.g. [123456789, 987654321]
+
+  discord:
+    enabled: false
+    token: ""          # your bot token from Discord developer portal
+
+ui:
+  web_port: 8080       # web UI binds to localhost only
+  cli: true
