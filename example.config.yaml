@@ -3,7 +3,7 @@
 
 ollama:
   model: qwen3:8b          # any model installed in Ollama
-  base_url: http://127.0.0.1:11434
+  base_url: http://localhost:11434
 
 sandbox:
   # All file operations are restricted to this directory.
@@ -15,7 +15,14 @@ tools:
   shell: true        # run shell commands (always requires HITL confirmation)
   web: true          # fetch public web pages
   git: true          # read-only git commands (status, log, diff)
-  email: false       # send email — disabled by default, opt-in only
+  email: true        # read/search/send/delete email
+
+email:
+  imap_host: 127.0.0.1
+  imap_port: 1143      # default Bridge IMAP port (plain). Use 1144 with imap_ssl: true
+  imap_ssl: false      # set true and port 1144 to use Bridge SSL
+  username: ""         # your Proton account email e.g. you@proton.me
+  password: ""         # Bridge password — shown in the Bridge app (NOT your Proton password)
 
 security:
   ipi_filter: true          # block prompt injection attempts

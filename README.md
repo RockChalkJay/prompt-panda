@@ -66,6 +66,37 @@ sqlite3 ~/prompt_panda_audit.db "SELECT ts, domain, blocked, status_code FROM ur
 sqlite3 ~/prompt_panda_audit.db "SELECT ts, url, block_reason FROM url_fetch_log WHERE blocked=1;"
 ```
 
+## Email
+
+```yaml
+tools:
+  email: true
+
+email:
+  imap_host: 127.0.0.1
+  imap_port: 1143
+  imap_ssl: false
+  username: you@proton.me
+  password: your-bridge-password
+```
+
+**Available operations:**
+
+| Tool | Description |
+|---|---|
+| `email_inbox` | List recent messages. Supports `folder`, `limit`, `unread` params |
+| `email_read` | Read full message content by UID |
+| `email_search` | Search by text (`query`), sender (`from_`), or date (`since`) |
+| `email_folders` | List all available folders/labels |
+| `email_delete` | Hard delete a message by UID |
+| `email_send` | Send email with `to`, `subject`, `body` (and optional `cc`, `bcc` |
+
+**Example prompts:**
+- "Check my inbox for unread messages"
+- "Search for emails from alice@example.com this week"
+- "Read email the latest email from alice@example.com"
+- "What folders do I have?"
+
 ## Optional integrations
 
 ### Telegram (polling — no open ports)
@@ -73,18 +104,6 @@ sqlite3 ~/prompt_panda_audit.db "SELECT ts, url, block_reason FROM url_fetch_log
 pip install -e ".[telegram]"
 ```
 Set `messaging.telegram.enabled: true` and add your bot token to `config.yaml`.
-
-### Discord
-```bash
-pip install -e ".[discord]"
-```
-Set `messaging.discord.enabled: true` and add your bot token to `config.yaml`.
-
-### Web UI
-```bash
-pip install -e ".[web]"
-```
-Access at `http://localhost:8080` (localhost only).
 
 ## Project structure
 
@@ -110,6 +129,6 @@ Prompt Panda directly addresses the known OpenClaw security issues:
 | Indirect prompt injection | IPI regex filter on all user input |
 | Malicious plugin execution | No plugin system — tools are code-defined only |
 | Silent data exfiltration | Every URL fetch logged; allowlist available |
-| Unauthenticated exposed port | No open ports — Telegram/Discord use polling |
+| Unauthenticated exposed port | No open ports — Telegram|
 | Path traversal | `_safe_path()` sandbox enforcement |
 | SSRF | Internal address blocklist on all web fetches |

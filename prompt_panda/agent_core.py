@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-import httpx
+import requests
 import yaml
 
 from .ipi_filter import ipi_check
@@ -52,6 +52,16 @@ class Config:
     # Empty list = anyone who messages the bot can use it.
     # Strongly recommended: set this to your own Telegram user ID.
     telegram_allowed_users: list = field(default_factory=list)
+    # Email
+    email_imap_host: str  = "127.0.0.1"
+    email_imap_port: int  = 1143
+    email_imap_ssl:  bool = False   
+    email_username:  str  = ""      # your email account
+    email_password:  str  = ""      # your email password
+    # SMTP (for sending)
+    email_smtp_host: str  = "127.0.0.1"
+    email_smtp_port: int  = 1025
+    email_smtp_ssl:  bool = False
 
     @classmethod
     def load(cls, path: str = "config.yaml") -> "Config":
@@ -72,6 +82,15 @@ class Config:
             c.telegram_enabled       = tg.get("enabled", False)
             c.telegram_token         = tg.get("token", "")
             c.telegram_allowed_users = tg.get("allowed_users", [])
+            em = data.get("email", {})
+            c.email_imap_host = em.get("imap_host", c.email_imap_host)
+            c.email_imap_port = int(em.get("imap_port", c.email_imap_port))
+            c.email_imap_ssl  = em.get("imap_ssl",  c.email_imap_ssl)
+            c.email_username  = em.get("username",  c.email_username)
+            c.email_password  = em.get("password",  c.email_password)
+            c.email_smtp_host = em.get("smtp_host", c.email_smtp_host)
+            c.email_smtp_port = int(em.get("smtp_port", c.email_smtp_port))
+            c.email_smtp_ssl  = em.get("smtp_ssl",  c.email_smtp_ssl)
             return c
         except FileNotFoundError:
             return cls()
@@ -190,12 +209,85 @@ TOOL_SCHEMAS = [
             "required": ["args"],
         },
     },
+    {
+        "name": "email_inbox",
+        "description": "List recent messages from an email folder. Returns subject, sender, date and UID for each message.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "folder": {"type": "string", "description": "IMAP folder name (default: INBOX)"},
+                "limit":  {"type": "integer", "description": "Number of messages to return, max 25 (default: 10)"},
+                "unread": {"type": "boolean", "description": "If true, only return unread messages (default: false)"},
+            },
+        },
+    },
+    {
+        "name": "email_read",
+        "description": "Read the full content of a specific email by its UID (obtained from email_inbox).",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "uid":    {"type": "string", "description": "Message UID from email_inbox results"},
+                "folder": {"type": "string", "description": "IMAP folder (default: INBOX)"},
+            },
+            "required": ["uid"],
+        },
+    },
+    {
+        "name": "email_search",
+        "description": "Search email by text, sender, or date. Returns matching messages with subject, sender, date and UID.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query":  {"type": "string", "description": "Text to search in subject and body"},
+                "from_":  {"type": "string", "description": "Filter by sender email address"},
+                "since":  {"type": "string", "description": "Filter by date e.g. '01-Jan-2025'"},
+                "folder": {"type": "string", "description": "IMAP folder to search (default: INBOX)"},
+                "limit":  {"type": "integer", "description": "Max results, up to 25 (default: 10)"},
+            },
+        },
+    },
+    {
+        "name": "email_folders",
+        "description": "List all available email folders and labels.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "email_send",
+        "description": "Send an outgoing email. Always requires user confirmation.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "to":      {"type": "string", "description": "Recipient email address"},
+                "subject": {"type": "string", "description": "Email subject"},
+                "body":    {"type": "string", "description": "Email body text"},
+                "cc":      {"type": "string", "description": "Comma-separated CC addresses (optional)"},
+                "bcc":     {"type": "string", "description": "Comma-separated BCC addresses (optional)"},
+            },
+            "required": ["to", "subject", "body"],
+        },
+    },
+    {
+        "name": "email_delete",
+        "description": "Delete an email message by UID. Always requires user confirmation.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "uid":        {"type": "string", "description": "Message UID from email_inbox results"},
+                "folder":     {"type": "string", "description": "IMAP folder (default: INBOX)"},
+                "permanent":  {"type": "boolean", "description": "If true, permanently delete; if false (default), move to trash"},
+            },
+            "required": ["uid"],
+        },
+    },
 ]
 
 # Tools that always require HITL confirmation
-ALWAYS_HITL = {"shell_run", "filesystem_delete", "email_send"}
+ALWAYS_HITL = {"shell_run", "filesystem_delete", "email_send", "email_delete"}
 # Tools that never need HITL (purely read-only)
-READ_ONLY   = {"filesystem_read", "web_fetch", "git_run"}
+READ_ONLY   = {"filesystem_read", "web_fetch", 
+               "git_run", "email_inbox", "email_read", 
+               "email_search", "email_folders"}
 
 
 # ─────────────────────────────────────────────
@@ -320,13 +412,31 @@ def run_git(params: dict, sandbox: Path, **_) -> str:
     return (result.stdout + result.stderr)[:4000] or "(no output)"
 
 
+from .email_adapter import (
+    run_email_inbox,
+    run_email_read,
+    run_email_search,
+    run_email_folders,
+    run_email_send,
+    run_email_delete,
+)
+
 TOOL_RUNNERS: dict[str, Any] = {
     "filesystem_read":  run_filesystem_read,
     "filesystem_write": run_filesystem_write,
     "shell_run":        run_shell,
     "web_fetch":        run_web_fetch,
     "git_run":          run_git,
+    "email_inbox":      run_email_inbox,
+    "email_read":       run_email_read,
+    "email_search":     run_email_search,
+    "email_folders":    run_email_folders,
+    "email_send":       run_email_send,
+    "email_delete":     run_email_delete,
 }
+
+# Email tools are read-only — add to READ_ONLY so they never trigger HITL
+READ_ONLY.update({"email_inbox", "email_read", "email_search", "email_folders"})
 
 
 # ─────────────────────────────────────────────
@@ -402,17 +512,6 @@ class AgentCore:
                     "name": tool,
                     "content": result,
                 })
-
-                # Stop the loop when a tool call is denied or has a fatal error
-                if (
-                    result == "User declined this operation."
-                    or result.startswith("Permission denied:")
-                    or result.startswith("Error:")
-                    or result.startswith("Tool error:")
-                ):
-                    self.stream(result)
-                    return result
-
                 continue
 
             break
@@ -440,7 +539,7 @@ class AgentCore:
             ]
 
         try:
-            r = httpx.post(
+            r = requests.post(
                 f"{self.cfg.ollama_url}/api/chat",
                 json=payload,
                 timeout=120,
