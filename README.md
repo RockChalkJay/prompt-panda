@@ -102,8 +102,27 @@ email:
 ### Telegram (polling — no open ports)
 ```bash
 pip install -e ".[telegram]"
+prompt-panda --telegram
 ```
 Set `messaging.telegram.enabled: true` and add your bot token to `config.yaml`.
+
+If `messaging.telegram.allowed_users` is set, only those Telegram user IDs can use the bot.
+
+### Telegram troubleshooting
+
+**Error:** `telegram.error.Conflict: terminated by other getUpdates request`
+
+This means more than one bot process is polling with the same token.
+
+```bash
+# Stop any existing Telegram bot processes
+pkill -f "prompt-panda --telegram"
+
+# Start exactly one process
+prompt-panda --telegram
+```
+
+If you use a process manager (LaunchAgent, systemd, Docker, etc.), make sure it runs only a single replica.
 
 ## Project structure
 
