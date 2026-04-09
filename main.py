@@ -10,7 +10,7 @@ from rich.panel import Panel
 
 from prompt_panda import AgentCore, Config
 
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.INFO)
 console = Console()
 
 

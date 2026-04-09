@@ -1,4 +1,4 @@
-# agent_core.py — the heart of the assistant (~320 lines)
+# agent_core.py — the heart of the assistant
 from __future__ import annotations
 import json
 import logging
@@ -282,13 +282,11 @@ TOOL_SCHEMAS = [
     },
 ]
 
-# Tools that always require HITL confirmation
-ALWAYS_HITL = {"shell_run", "filesystem_delete", "email_send", "email_delete"}
 # Tools that never need HITL (purely read-only)
+# anything that's not in READ_ONLY will require HITL
 READ_ONLY   = {"filesystem_read", "web_fetch", 
                "git_run", "email_inbox", "email_read", 
                "email_search", "email_folders"}
-
 
 # ─────────────────────────────────────────────
 # Tool runners
@@ -494,8 +492,13 @@ class AgentCore:
         self.history.append({"role": "user", "content": user_message})
 
         # Agentic loop — LLM may make multiple tool calls before replying
-        for _ in range(10):
+        last_tool_call: tuple[str, dict] | None = None
+        last_tool_result: str = ""
+        for iteration in range(10):
             response = self._call_ollama()
+            logger.debug(
+                f"AgentCore.chat iteration={iteration} response_type={response.get('type')}"
+            )
 
             if response.get("type") == "text":
                 text = response["content"]
@@ -506,7 +509,29 @@ class AgentCore:
             if response.get("type") == "tool_call":
                 tool   = response["tool"]
                 params = response["params"]
+                logger.info(f"AgentCore: tool_call {tool} params={params}")
+                if last_tool_call == (tool, params):
+                    logger.warning(
+                        f"Duplicate identical tool call detected in same turn: {tool} {params}"
+                    )
+                    duplicate_msg = (
+                        "I already executed that tool call once. "
+                        "No further action is needed."
+                    )
+                    self.history.append({"role": "assistant", "content": duplicate_msg})
+                    self.stream(duplicate_msg)
+                    return last_tool_result or duplicate_msg
                 result = self._dispatch_tool(tool, params)
+                last_tool_call = (tool, params)
+                last_tool_result = result if isinstance(result, str) else json.dumps(result)
+
+                # Check for HITL rejection - stop the conversation loop
+                if result == "__HITL_REJECTED__":
+                    error_msg = "Operation cancelled - user confirmation timed out."
+                    self.history.append({"role": "assistant", "content": error_msg})
+                    self.stream(error_msg)
+                    return error_msg
+                
                 self.history.append({
                     "role": "tool",
                     "name": tool,
@@ -578,10 +603,9 @@ class AgentCore:
             return f"Error: tool {tool!r} is disabled"
 
         # HITL confirmation for destructive / non-read-only tools
-        needs_hitl = (
-            tool in ALWAYS_HITL
-            or (self.cfg.hitl_destructive and tool not in READ_ONLY)
-        )
+        # Any tool not explicitly marked as READ_ONLY requires HITL
+        needs_hitl = tool not in READ_ONLY
+        logger.debug(f"_dispatch_tool: tool={tool} needs_hitl={needs_hitl}")
         if needs_hitl:
             prompt = (
                 f"\nTool:   {tool}\n"
@@ -589,7 +613,8 @@ class AgentCore:
             )
             if not self.hitl(prompt):
                 self.audit.write(self.session_id, "tool_deny", tool, "HITL rejected")
-                return "User declined this operation."
+                # Return a special marker to stop the conversation loop
+                return "__HITL_REJECTED__"
 
         # Run the tool — pass all context so runners can audit as needed
         try:

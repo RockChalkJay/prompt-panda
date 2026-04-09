@@ -50,10 +50,6 @@ messaging:
     # Leave empty to allow anyone — only safe for fully private bots.
     allowed_users: []  # e.g. [123456789, 987654321]
 
-  discord:
-    enabled: false
-    token: ""          # your bot token from Discord developer portal
-
 ui:
   web_port: 8080       # web UI binds to localhost only
   cli: true
